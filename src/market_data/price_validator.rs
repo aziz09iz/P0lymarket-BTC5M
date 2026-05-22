@@ -101,10 +101,10 @@ impl PriceValidator {
             // RULE 2: Stale snapshot detection
             // If source is RestSnapshot AND we already have a live WS price,
             // reject the REST snapshot (it's older) unless we are in fallback mode
-            // or the time delta is large (> 5 seconds).
+            // or the time delta is large (> 800 ms).
             if update.source == PriceSource::RestSnapshot
                 && last.source == PriceSource::WebSocketLive
-                && time_delta_ms < 5000
+                && time_delta_ms < 800
                 && !fallback_mode
             {
                 return Err(PriceRejectReason::StaleSnapshot);

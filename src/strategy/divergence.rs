@@ -10,13 +10,13 @@ use crate::probability::edge::{Direction, EdgeScore};
 use crate::probability::estimator::ProbabilityEstimate;
 use crate::strategy::traits::{Strategy, TradeSignal};
 
-/// Primary strategy: BTC-Polymarket Divergence (Trigger A).
-pub struct DivergenceStrategy {
+/// Primary strategy: BTC-Polymarket Momentum Divergence (Trigger A).
+pub struct MomentumDivergenceStrategy {
     config: Arc<RwLock<DivergenceConfig>>,
     default_size_usd: f64,
 }
 
-impl DivergenceStrategy {
+impl MomentumDivergenceStrategy {
     pub fn new(config: Arc<RwLock<DivergenceConfig>>, default_size_usd: f64) -> Self {
         Self {
             config,
@@ -26,13 +26,12 @@ impl DivergenceStrategy {
 }
 
 #[async_trait]
-impl Strategy for DivergenceStrategy {
+impl Strategy for MomentumDivergenceStrategy {
     fn name(&self) -> &str {
-        "divergence"
+        "momentum_divergence"
     }
 
     fn is_enabled(&self) -> bool {
-        // block_on equivalent not available — use try_read; config rarely contended
         self.config
             .try_read()
             .map(|c| c.enabled)
@@ -50,25 +49,91 @@ impl Strategy for DivergenceStrategy {
 
         // 1. Edge must be tradeable.
         if !edge.tradeable {
+            tracing::debug!(
+                market = %market.slug,
+                edge = edge.edge_pct,
+                reason = ?edge.reason,
+                "[momentum_divergence] SKIP: edge not tradeable"
+            );
             return None;
         }
 
         // 2. BTC velocity must be moving significantly.
         let vel_abs = state.btc.price_velocity.abs();
         if vel_abs < cfg.min_velocity_abs {
+            tracing::debug!(
+                market = %market.slug,
+                velocity = state.btc.price_velocity,
+                min_velocity = cfg.min_velocity_abs,
+                "[momentum_divergence] SKIP: price velocity too low"
+            );
             return None;
         }
 
         // 3. Microtrend must not be Choppy.
         if state.btc.microtrend == crate::market_data::state::MicroTrend::Choppy {
+            tracing::debug!(
+                market = %market.slug,
+                microtrend = ?state.btc.microtrend,
+                "[momentum_divergence] SKIP: microtrend is choppy"
+            );
             return None;
         }
 
         // 4. Volume alignment: delta signum must match velocity signum.
         if cfg.require_volume_alignment {
             if state.btc.volume_delta.signum() != state.btc.price_velocity.signum() {
+                tracing::debug!(
+                    market = %market.slug,
+                    volume_delta = state.btc.volume_delta,
+                    velocity = state.btc.price_velocity,
+                    "[momentum_divergence] SKIP: volume delta not aligned with velocity"
+                );
                 return None;
             }
+        }
+
+        // Gate 1: Order Flow harus dominan searah dengan velocity
+        let flow_aligned = if state.btc.price_velocity > 0.0 {
+            state.btc.order_flow_ratio > 0.58  // min 58% buy dominance untuk long
+        } else {
+            state.btc.order_flow_ratio < 0.42  // min 58% sell dominance untuk short
+        };
+        if !flow_aligned {
+            tracing::debug!(
+                market = %market.slug,
+                ofi = state.btc.order_flow_ratio,
+                velocity = state.btc.price_velocity,
+                "[momentum_divergence] SKIP: order flow not aligned (ofi={:.2})",
+                state.btc.order_flow_ratio
+            );
+            return None;
+        }
+
+        // Gate 2: Velocity consistency minimum
+        if state.btc.velocity_consistency < cfg.min_velocity_consistency {
+            tracing::debug!(
+                market = %market.slug,
+                consistency = state.btc.velocity_consistency,
+                min_consistency = cfg.min_velocity_consistency,
+                "[momentum_divergence] SKIP: momentum not consistent"
+            );
+            return None;
+        }
+
+        // Gate 3: Tidak boleh decelerating kuat (kecuali floor mode)
+        // Ini mencegah entry di akhir momentum burst
+        let is_strongly_decelerating = 
+            state.btc.price_acceleration.signum() != state.btc.price_velocity.signum()
+            && state.btc.price_acceleration.abs() > 0.5;
+        if is_strongly_decelerating {
+            tracing::debug!(
+                market = %market.slug,
+                acceleration = state.btc.price_acceleration,
+                velocity = state.btc.price_velocity,
+                "[momentum_divergence] SKIP: strongly decelerating"
+            );
+            return None;
         }
 
         // 5. Entry price is yes_price or no_price.

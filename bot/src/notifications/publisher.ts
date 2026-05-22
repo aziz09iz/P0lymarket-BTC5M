@@ -2,6 +2,14 @@ import type { Bot } from "grammy";
 import type { Redis } from "ioredis";
 import { getConfig } from "../redis/client.js";
 import { telegramNotifications as notify } from "./config.js";
+import { escapeHtml } from "../ui/format.js";
+
+function safeStr(val: unknown): string {
+  if (val === null || val === undefined) {
+    return "";
+  }
+  return escapeHtml(String(val));
+}
 
 // ---------------------------------------------------------------------------
 // Real-time notification publisher (minimal — no periodic spam)
@@ -77,7 +85,7 @@ export async function startNotificationPublisher(
               `📥 Position Opened · ${modeLabel}`,
               `━━━━━━━━━━━━━━━━━━━━━`,
               `${dirLabel} @ ${entryPrice.toFixed(3)} · $${Number(data.size_usd).toFixed(2)} · ${Number(data.share_qty).toFixed(2)} shares`,
-              `${data.market_id} · ${timeRemainingSecs}s left`,
+              `${safeStr(data.market_id)} · ${timeRemainingSecs}s left`,
               `TP: ${targetExit.toFixed(2)} · SL: ${stopLossPrice.toFixed(2)} · Force: ${exitBeforeFinal}s`,
             ].join("\n")
           );
@@ -130,9 +138,9 @@ export async function startNotificationPublisher(
 
         case "feed_critical": {
           if (!notify.critical_feed_error) break;
-          const msg =
-            data.message ??
-            `🔴 ${data.feed ?? "Feed"} down ${data.down_secs ?? "?"}s+ · REST fallback active`;
+          const msg = data.message
+            ? safeStr(data.message)
+            : `🔴 ${safeStr(data.feed ?? "Feed")} down ${data.down_secs ?? "?"}s+ · REST fallback active`;
           messagesToSend.push(msg.startsWith("🔴") ? msg : `🔴 ${msg}`);
           break;
         }
@@ -152,7 +160,7 @@ export async function startNotificationPublisher(
             reason.toLowerCase().includes("cooldown") ||
             reason.toLowerCase().includes("exposure")
           ) {
-            messagesToSend.push(`🛑 Kill switch · ${modeLabel}\n${reason}`);
+            messagesToSend.push(`🛑 Kill switch · ${modeLabel}\n${safeStr(reason)}`);
           }
           break;
         }

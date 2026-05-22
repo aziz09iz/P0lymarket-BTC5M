@@ -13,7 +13,7 @@ use anyhow::{Result, Context};
 use crate::config::AppConfig;
 use crate::events::bus::{EventBus, MarketEvent, FeedSource, ConnectionStatus, MarketCycleEvent, CycleEventType};
 use crate::market_data::state::{apply_price_update, MarketState, Btc5mMarket, MarketPhase};
-use crate::market_data::price_validator::{PriceSource, PriceUpdate};
+use crate::market_data::price_validator::{PriceSource, PriceUpdate, PriceRejectReason};
 use crate::market_data::clock_sync::PolymarketClock;
 use crate::market_data::normalizer::{now_millis, is_ws_control_message, normalize_polymarket_ws_msg};
 
@@ -452,16 +452,29 @@ async fn run_ws_for_market(
                             }
                             Err(reject_reason) => {
                                 let mut s = state.write().await;
-                                s.latency.price_rejections += 1;
-                                tracing::warn!(
-                                    target: "price",
-                                    market_id = %condition_id,
-                                    reason = ?reject_reason,
-                                    "price update REJECTED"
-                                );
-                                bus.publish(MarketEvent::PriceRejected {
-                                    reason: format!("[price_validator] REJECTED update: {:?}", reject_reason),
-                                });
+                                match reject_reason {
+                                    PriceRejectReason::StaleSnapshot => {
+                                        s.latency.stale_snapshot_rejections += 1;
+                                        tracing::debug!(
+                                            target: "price",
+                                            market_id = %condition_id,
+                                            reason = ?reject_reason,
+                                            "price update REJECTED (stale snapshot)"
+                                        );
+                                    }
+                                    _ => {
+                                        s.latency.price_rejections += 1;
+                                        tracing::warn!(
+                                            target: "price",
+                                            market_id = %condition_id,
+                                            reason = ?reject_reason,
+                                            "price update REJECTED"
+                                        );
+                                        bus.publish(MarketEvent::PriceRejected {
+                                            reason: format!("[price_validator] REJECTED update: {:?}", reject_reason),
+                                        });
+                                    }
+                                }
                             }
                         }
                     }
@@ -727,10 +740,21 @@ pub async fn run_btc5m_tracker(
                 let cfg_clone = config.clone();
                 let cond_id_clone = m.condition_id.clone();
                 let validator_clone = validator.clone();
+                let target_window_ts = m.window_start_unix;
                 tokio::spawn(async move {
                     let mut backoff_secs: u64 = 1;
                     loop {
                         if new_cancel.is_cancelled() {
+                            break;
+                        }
+
+                        // Sebelum setiap reconnect attempt
+                        let current_ts = {
+                            let s = state_clone.read().await;
+                            s.btc5m_market.as_ref().map(|m| m.window_start_unix)
+                        };
+                        if current_ts != Some(target_window_ts) {
+                            info!("[poly_ws] market window changed, stopping WS task");
                             break;
                         }
 
@@ -899,16 +923,29 @@ pub async fn run_btc5m_tracker(
                                     }
                                     Err(reject_reason) => {
                                         let mut s = state_clone.write().await;
-                                        s.latency.price_rejections += 1;
-                                        tracing::warn!(
-                                            target: "price",
-                                            market_id = %market_slug,
-                                            reason = ?reject_reason,
-                                            "price update REJECTED (REST poll)"
-                                        );
-                                        bus_clone.publish(MarketEvent::PriceRejected {
-                                            reason: format!("[price_validator] REJECTED REST update: {:?}", reject_reason),
-                                        });
+                                        match reject_reason {
+                                            PriceRejectReason::StaleSnapshot => {
+                                                s.latency.stale_snapshot_rejections += 1;
+                                                tracing::debug!(
+                                                    target: "price",
+                                                    market_id = %market_slug,
+                                                    reason = ?reject_reason,
+                                                    "price update REJECTED (REST poll stale snapshot)"
+                                                );
+                                            }
+                                            _ => {
+                                                s.latency.price_rejections += 1;
+                                                tracing::warn!(
+                                                    target: "price",
+                                                    market_id = %market_slug,
+                                                    reason = ?reject_reason,
+                                                    "price update REJECTED (REST poll)"
+                                                );
+                                                bus_clone.publish(MarketEvent::PriceRejected {
+                                                    reason: format!("[price_validator] REJECTED REST update: {:?}", reject_reason),
+                                                });
+                                            }
+                                        }
                                     }
                                 }
 

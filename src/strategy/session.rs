@@ -40,6 +40,8 @@ pub struct SessionState {
     pub session_start_ms: u64,
     pub last_trade_at_ms: Option<u64>,
     pub trades_this_session: u32,
+    pub best_opportunity_score: f64,
+    pub best_opportunity_at_ms: u64,
 }
 
 impl SessionState {
@@ -48,6 +50,8 @@ impl SessionState {
             session_start_ms: current_session_start_ms(now_millis()),
             last_trade_at_ms: None,
             trades_this_session: 0,
+            best_opportunity_score: 0.0,
+            best_opportunity_at_ms: 0,
         }
     }
 
@@ -57,6 +61,7 @@ impl SessionState {
             self.session_start_ms = boundary;
             self.last_trade_at_ms = None;
             self.trades_this_session = 0;
+            self.reset_opportunity();
             tracing::info!(
                 "[strategy] new 30-minute session started — threshold mode reset to NORMAL"
             );
@@ -73,10 +78,23 @@ impl SessionState {
     pub fn on_trade_executed(&mut self) {
         self.last_trade_at_ms = Some(now_millis());
         self.trades_this_session += 1;
+        self.reset_opportunity();
         tracing::info!(
             "[strategy] trade executed — {} trades this session, mode → NORMAL",
             self.trades_this_session
         );
+    }
+
+    pub fn update_opportunity(&mut self, score: f64) {
+        if score > self.best_opportunity_score {
+            self.best_opportunity_score = score;
+            self.best_opportunity_at_ms = now_millis();
+        }
+    }
+
+    pub fn reset_opportunity(&mut self) {
+        self.best_opportunity_score = 0.0;
+        self.best_opportunity_at_ms = 0;
     }
 
     pub fn threshold_mode(&self, config: &AppConfig) -> ThresholdMode {

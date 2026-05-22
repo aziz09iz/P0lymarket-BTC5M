@@ -34,6 +34,13 @@ pub struct PaperPosition {
 // ---------------------------------------------------------------------------
 use crate::config::AppConfig;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SuspiciousType {
+    StalePrice,
+    ExtremeEntry,
+    ImpossibleReturn,
+}
+
 // Closed trade
 // ---------------------------------------------------------------------------
 
@@ -53,6 +60,7 @@ pub struct ClosedTrade {
     pub edge_pct: f64,
     pub is_suspicious: bool,
     pub suspicious_reason: Option<String>,
+    pub suspicious_type: Option<SuspiciousType>,
 }
 
 pub struct PaperTradeValidator {
@@ -62,7 +70,7 @@ pub struct PaperTradeValidator {
 
 pub enum TradeValidity {
     Valid,
-    Suspicious { reason: String },
+    Suspicious { reason: String, suspicious_type: SuspiciousType },
 }
 
 impl PaperTradeValidator {
@@ -70,23 +78,44 @@ impl PaperTradeValidator {
         let pnl_pct = trade.pnl_pct.abs();
         let hold_secs = trade.hold_duration_ms / 1000;
 
-        // Flag: >50% PnL in under 30 seconds = stale data artifact
-        if pnl_pct > self.max_realistic_pnl_pct && hold_secs < self.max_hold_to_profit_ratio as u64 {
+        // 1. PnL absolut > threshold (50%) dengan hold apapun yang < 120s
+        if pnl_pct > self.max_realistic_pnl_pct && hold_secs < 120 {
             return TradeValidity::Suspicious {
                 reason: format!(
                     "+{:.0}% in {}s — likely stale price artifact, not real edge",
                     pnl_pct, hold_secs
                 ),
+                suspicious_type: SuspiciousType::ImpossibleReturn,
             };
         }
 
-        // Flag: entry price was unusually far from market mid
+        // 2. PnL > 20% dengan hold < 10s (sangat mencurigakan)
+        if pnl_pct > 20.0 && hold_secs < 10 {
+            return TradeValidity::Suspicious {
+                reason: format!(
+                    "Extreme return of {:.1}% in {}s (< 10s)",
+                    pnl_pct, hold_secs
+                ),
+                suspicious_type: SuspiciousType::ImpossibleReturn,
+            };
+        }
+
+        // 3. Entry price extreme (< 0.05 atau > 0.95)
         if trade.entry_price < 0.05 || trade.entry_price > 0.95 {
             return TradeValidity::Suspicious {
                 reason: format!(
                     "entry price {:.3} is extreme — outside normal range",
                     trade.entry_price
                 ),
+                suspicious_type: SuspiciousType::ExtremeEntry,
+            };
+        }
+
+        // 4. Exit price persis sama dengan entry (exit di harga yang sama = stale data)
+        if trade.exit_price == trade.entry_price {
+            return TradeValidity::Suspicious {
+                reason: "Exit price exactly equals entry price (stale data)".to_string(),
+                suspicious_type: SuspiciousType::StalePrice,
             };
         }
 
@@ -253,6 +282,7 @@ impl PaperSimulator {
                     edge_pct: pos.edge_pct,
                     is_suspicious: false,
                     suspicious_reason: None,
+                    suspicious_type: None,
                 };
 
                 if config.paper.flag_suspicious_trades {
@@ -261,9 +291,10 @@ impl PaperSimulator {
                         max_hold_to_profit_ratio: config.paper.suspicious_hold_max_secs as f64,
                     };
                     match validator.validate_closed_trade(&trade) {
-                        TradeValidity::Suspicious { reason } => {
+                        TradeValidity::Suspicious { reason, suspicious_type } => {
                             trade.is_suspicious = true;
                             trade.suspicious_reason = Some(reason);
+                            trade.suspicious_type = Some(suspicious_type);
                         }
                         TradeValidity::Valid => {}
                     }

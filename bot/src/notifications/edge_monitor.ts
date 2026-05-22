@@ -22,6 +22,9 @@ interface EdgeData {
   confidence: number;
   price_velocity: number;
   volume_delta: number;
+  order_flow_ratio?: number;
+  velocity_consistency?: number;
+  price_acceleration?: number;
   missing_reason?: string;
   threshold_mode?: string;
   mins_since_last_trade?: number;
@@ -158,6 +161,7 @@ export function startEdgeMonitor(
               : ``,
             ``,
             `BTC signal:  vel <code>${velStr}/s</code> ${trendIcon} · delta <code>${volDeltaStr}</code> · trend: ${data.btc_trend} (${data.velocity_trend})`,
+            `             OFI: <code>${((data.order_flow_ratio ?? 0.5) * 100).toFixed(1)}%</code> · consistency: <code>${((data.velocity_consistency ?? 0.5) * 100).toFixed(0)}%</code> · accel: <code>${(data.price_acceleration ?? 0.0) >= 0 ? "+" : ""}${(data.price_acceleration ?? 0.0).toFixed(4)}</code>`,
             `Divergence:  <code>${data.divergence_score.toFixed(2)} (${divLabel})</code>`,
             ``,
             `Direction:  ${bestDir === "YES" ? "⬆️ YES" : "⬇️ NO"} (${bestDir === "YES" ? "BTC moving up" : "BTC moving down"}, market still ${bestDir === "YES" ? yesPricePct.toFixed(1) : noPricePct.toFixed(1)}%)`,

@@ -181,7 +181,7 @@ pub fn normalize_gamma_market(v: &Value) -> Option<GammaMarket> {
         .unwrap_or(0.0);
 
     let end_date = v["endDate"].as_str().unwrap_or("").to_string();
-    let time_remaining_secs = compute_time_remaining(&end_date);
+    let time_remaining_secs = compute_time_remaining(&end_date, 0.0);
 
     // Spread: best_ask - best_bid if available, else 0.
     let yes_ask = v["bestAsk"]
@@ -346,12 +346,16 @@ pub struct WsMarketUpdate {
 
 /// Compute seconds remaining until `end_date` (RFC 3339 / ISO 8601).
 /// Returns `i64::MAX` if the string is missing or unparseable.
-pub fn compute_time_remaining(end_date: &str) -> i64 {
+pub fn compute_time_remaining(end_date: &str, server_offset_secs: f64) -> i64 {
     if end_date.is_empty() {
         return i64::MAX;
     }
     match end_date.parse::<DateTime<Utc>>() {
-        Ok(dt) => (dt - Utc::now()).num_seconds(),
+        Ok(dt) => {
+            let offset_ms = (server_offset_secs * 1000.0) as i64;
+            let now = Utc::now() + chrono::Duration::milliseconds(offset_ms);
+            (dt - now).num_seconds()
+        }
         Err(_) => i64::MAX,
     }
 }

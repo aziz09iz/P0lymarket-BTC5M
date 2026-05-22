@@ -80,10 +80,21 @@ pub fn compute_estimate(
         0.3
     };
 
-    let confidence = vel_comp * 0.35
-        + delta_comp * 0.35
-        + spread_comp * 0.15
-        + time_comp * 0.15;
+    let ofi_comp = ((input.btc_state.order_flow_ratio - 0.5).abs() * 2.0).min(1.0);
+    let consistency_comp = input.btc_state.velocity_consistency;
+    let accel_comp = if input.btc_state.price_acceleration.signum() == input.btc_state.price_velocity.signum() {
+        (input.btc_state.price_acceleration.abs() / 2.0).min(1.0)
+    } else {
+        0.0
+    };
+
+    let confidence = vel_comp * 0.25
+        + delta_comp * 0.20
+        + spread_comp * 0.10
+        + time_comp * 0.10
+        + ofi_comp * 0.15
+        + consistency_comp * 0.12
+        + accel_comp * 0.08;
 
     ProbabilityEstimate {
         market_id: input.market_id.clone(),

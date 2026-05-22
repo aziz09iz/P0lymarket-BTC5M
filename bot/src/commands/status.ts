@@ -55,6 +55,9 @@ export async function handleStatus(ctx: Context, redis: Redis): Promise<void> {
     let polyLat: number | undefined;
     let clockOffset: number | undefined;
     let missingReason = "";
+    let orderFlowRatio = 0.5;
+    let velocityConsistency = 0.5;
+    let priceAcceleration = 0.0;
 
     // Data quality / health additions
     let binancePing: number | undefined;
@@ -104,6 +107,9 @@ export async function handleStatus(ctx: Context, redis: Redis): Promise<void> {
       minsSinceLastTrade = sig.mins_since_last_trade ?? 0;
       activeMinEdgePct = sig.active_min_edge_pct ?? minEdgePct;
       activeMinConfidence = sig.active_min_confidence ?? minConfidence;
+      orderFlowRatio = sig.order_flow_ratio ?? 0.5;
+      velocityConsistency = sig.velocity_consistency ?? 0.5;
+      priceAcceleration = sig.price_acceleration ?? 0.0;
     }
 
     if (btcRaw) {
@@ -113,6 +119,9 @@ export async function handleStatus(ctx: Context, redis: Redis): Promise<void> {
       if (btcTrend === "Choppy") btcTrend = btc.microtrend ?? "Choppy";
       if (velocityTrend === "Stable") velocityTrend = btc.velocity_trend ?? "Stable";
       volumeDelta = btc.volume_delta ?? 0.0;
+      if (btc.order_flow_ratio !== undefined) orderFlowRatio = btc.order_flow_ratio;
+      if (btc.velocity_consistency !== undefined) velocityConsistency = btc.velocity_consistency;
+      if (btc.price_acceleration !== undefined) priceAcceleration = btc.price_acceleration;
     }
 
     const positions = posRaw ? JSON.parse(posRaw) : [];
@@ -212,6 +221,7 @@ export async function handleStatus(ctx: Context, redis: Redis): Promise<void> {
       "━━━ BTC ━━━━━━━━━━━━━━━━━━━━",
       `<b>$${btcPrice.toLocaleString()}</b>  vel: <code>${velStr}/s</code>  trend: ${trendText} ${btcTrend} (${velocityTrend})`,
       `vol delta: <code>${volDeltaStr}</code>`,
+      `OFI: <code>${(orderFlowRatio * 100).toFixed(1)}%</code>  consistency: <code>${(velocityConsistency * 100).toFixed(0)}%</code>  accel: <code>${priceAcceleration >= 0 ? "+" : ""}${priceAcceleration.toFixed(4)}</code>`,
       "",
       "━━━ POSITION ━━━━━━━━━━━━━━━",
     );

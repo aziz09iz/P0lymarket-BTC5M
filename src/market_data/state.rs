@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 /// Which side initiated the trade (taker perspective).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TradeSide {
     Buy,
     Sell,
@@ -85,6 +85,12 @@ pub struct BtcState {
     pub volatility: f64,
     /// Momentum classification.
     pub microtrend: MicroTrend,
+    /// Ratio of buy volume vs total volume dalam window terakhir (0.0–1.0).
+    pub order_flow_ratio: f64,
+    /// Seberapa konsisten arah velocity dalam 10s window (0.0–1.0).
+    pub velocity_consistency: f64,
+    /// Perubahan velocity (5s vs 15s) yang dinormalisasi.
+    pub price_acceleration: f64,
     /// Raw tick history (capped at `btc_max_ticks` and `btc_tick_window_secs`).
     pub tick_history: VecDeque<BtcTick>,
 }
@@ -100,6 +106,9 @@ impl Default for BtcState {
             volume_delta: 0.0,
             volatility: 0.0,
             microtrend: MicroTrend::Choppy,
+            order_flow_ratio: 0.5,
+            velocity_consistency: 0.5,
+            price_acceleration: 0.0,
             tick_history: VecDeque::new(),
         }
     }
@@ -194,6 +203,25 @@ impl BtcState {
                     TradeSide::Sell => (b, s + tick.quantity),
                 });
         self.volume_delta = buy_vol - sell_vol;
+
+        let total_vol = buy_vol + sell_vol;
+        self.order_flow_ratio = if total_vol > 0.0 { buy_vol / total_vol } else { 0.5 };
+
+        // ── Velocity consistency ───────────────────────────────────────────
+        let cutoff_10s_ms = latest_ms.saturating_sub(10_000);
+        let relevant_ticks: Vec<&BtcTick> = self.tick_history.iter()
+            .filter(|t| t.timestamp_ms >= cutoff_10s_ms)
+            .collect();
+        let n_10s = relevant_ticks.len();
+        let dominant_side = if self.price_velocity > 0.0 { TradeSide::Buy } else { TradeSide::Sell };
+        let consistent_ticks = relevant_ticks.iter()
+            .filter(|t| matches!((&t.side, &dominant_side), 
+                (TradeSide::Buy, TradeSide::Buy) | (TradeSide::Sell, TradeSide::Sell)))
+            .count();
+        self.velocity_consistency = if n_10s > 0 { consistent_ticks as f64 / n_10s as f64 } else { 0.5 };
+
+        // ── Price acceleration ─────────────────────────────────────────────
+        self.price_acceleration = self.velocity_5s - self.velocity_15s;
 
         // ── Volatility (std dev of price) ──────────────────────────────────
         let prices: Vec<f64> = self.tick_history.iter().map(|t| t.price).collect();
@@ -366,6 +394,7 @@ pub struct LatencyState {
     pub binance_last_msg_ms: u64,
     pub polymarket_last_msg_ms: u64,
     pub price_rejections: u64,
+    pub stale_snapshot_rejections: u64,
     pub fallback_mode: bool,
 }
 

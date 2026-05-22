@@ -95,7 +95,6 @@ pub struct StrategyConfig {
     #[serde(default = "default_session_definition_mins")]
     pub session_definition_mins: u64,
     pub divergence: DivergenceConfig,
-    pub exhaustion: ExhaustionConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -104,6 +103,7 @@ pub struct DivergenceConfig {
     pub market_uncertainty_min: f64,
     pub market_uncertainty_max: f64,
     pub min_velocity_abs: f64,
+    pub min_velocity_consistency: f64,
     pub velocity_scale: f64,
     pub delta_scale: f64,
     pub min_edge_pct: f64,
@@ -114,20 +114,6 @@ pub struct DivergenceConfig {
     pub exit_before_final_secs: i64,
     pub max_spread: f64,
     pub require_volume_alignment: bool,
-    pub min_time_remaining_secs: i64,
-    pub max_time_remaining_secs: i64,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct ExhaustionConfig {
-    pub enabled: bool,
-    #[serde(default = "default_exhaustion_min_edge")]
-    pub min_edge_pct: f64,
-    pub exhaustion_threshold: f64,
-    pub velocity_taper_ratio: f64,
-    pub profit_target_pct: f64,
-    pub stop_loss_pct: f64,
-    pub size_multiplier: f64,
     pub min_time_remaining_secs: i64,
     pub max_time_remaining_secs: i64,
 }
@@ -175,9 +161,6 @@ fn default_session_definition_mins() -> u64 {
     30
 }
 
-fn default_exhaustion_min_edge() -> f64 {
-    0.06
-}
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct DataQualityConfig {

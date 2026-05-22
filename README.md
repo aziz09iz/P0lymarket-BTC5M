@@ -34,9 +34,9 @@ graph TD
 
     subgraph RustEngine [target/release/polytrade]
         State[Market State Hub] --> EvalLoop[Evaluation Loop — setiap tick]
-        EvalLoop -->|1. Repricing Lag| DivergenceStrat[Divergence Strategy — Trigger A]
-        EvalLoop -->|2. Reversal Signal| ExhaustionStrat[Exhaustion Strategy — Trigger B]
-        EvalLoop -->|3. Enforce Gates| RiskEngine[Risk Engine]
+        EvalLoop -->|1. Repricing Lag| MomentumDivergenceStrat[Momentum Divergence Strategy]
+        EvalLoop -->|2. Enforce Gates| RiskEngine[Risk Engine]
+        MomentumDivergenceStrat --> RiskEngine
         RiskEngine -->|Trade Signal| Simulator[Paper Simulator / Live Executor]
     end
 
@@ -55,25 +55,25 @@ graph TD
 
 ---
 
-## ✨ Fitur Utama (Strategy v2)
+## ✨ Fitur Utama (MomentumDivergence Strategy)
 
-### 🎯 Trigger A — Repricing Lag (Divergence)
-Mendeteksi window di mana **BTC bergerak signifikan tapi harga Polymarket belum ikut**. Bot entry ketika:
-- BTC velocity melampaui threshold (`min_velocity_abs`)
-- Harga kontrak masih di zona ketidakpastian `[0.38, 0.63]`
-- Divergence score mencapai minimum edge `6%`
+Fokus pada satu strategi utama yang dioptimalkan dengan win rate tinggi (> 60%), probabilitas entry selektif, dan tingkat false signal rendah.
 
-### 🔄 Trigger B — Exhaustion Reversal
-Mendeteksi situasi di mana harga sudah overextend. Bot masuk posisi reversal ketika:
-- Harga YES atau NO menyentuh `>= 80%`
-- Velocity BTC jangka pendek (5s) `< 50%` dari medium-term (15s) — tanda tapering
-- Sizing lebih kecil (50%) dengan stop loss lebih ketat
+### 🎯 Momentum Divergence Strategy
+Mendeteksi window di mana **BTC bergerak dengan momentum kuat tetapi harga Polymarket belum merespons (repricing lag)**. Bot mengevaluasi dan menyaring sinyal menggunakan filter gates berikut:
+- **BTC Velocity Threshold**: Kecepatan pergerakan BTC harus melebihi baseline minimum (`min_velocity_abs`).
+- **Uncertainty Price Zone**: Harga kontrak Polymarket berada di rentang ketidakpastian `[0.32, 0.68]`.
+- **Divergence & Edge**: Divergence score antara estimasi internal dan harga market menghasilkan edge positif yang melampaui limit minimum (`min_edge_pct`).
+- **Order Flow Indicator (OFI)**: Menganalisis rasio volume beli vs jual di Binance untuk memastikan order flow searah dengan pergerakan harga BTC.
+- **Velocity Consistency**: Mengukur seberapa konsisten arah pergerakan harga BTC untuk menghindari entry pada noise / spike sesaat (`min_velocity_consistency`).
+- **Price Acceleration Guard**: Mencegah entry jika pergerakan harga melambat/berbalik secara tajam di akhir momentum burst (decelerasi kuat).
+- **Session Opportunity Tracker**: Menganalisis historical hit-rate dan memprioritaskan sesi dengan sinyal kualitas tertinggi.
 
-### 📊 Price Velocity Analyzer
-Menghitung kecepatan pergerakan BTC dalam 3 window:
-- **Short (5s)** — untuk deteksi tapering
-- **Medium (15s)** — referensi baseline
-- **Long (10s)** — klasifikasi trend: `Accelerating` / `Stable` / `Tapering`
+### 📊 Price Velocity & Trend Analyzer
+Menghitung metrik pergerakan BTC dalam 3 window untuk analisis momentum yang komprehensif:
+- **Short (5s)** — untuk deteksi perubahan jangka sangat pendek
+- **Long (10s)** — klasifikasi trend keseluruhan & baseline velocity
+- **Medium (15s)** — pengukuran tren jangka menengah
 
 ### 🔒 Risk Engine
 - Maksimal **1 posisi aktif** setiap saat (hard limit)
@@ -259,55 +259,50 @@ Semua parameter strategi dapat diubah langsung di file `config/default.toml`. Bo
 ```toml
 # ─── FEEDS ─────────────────────────────────────────────
 [feeds]
-binance_ws = "wss://stream.binance.com:9443/ws/btcusdt@trade"
+binance_ws = "wss://stream.binance.com:443/ws/btcusdt@trade"
+polymarket_rest = "https://gamma-api.polymarket.com"
 polymarket_ws = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 market_keyword_filter = "BTC"
 
-# ─── LOGGING ───────────────────────────────────────────
-[logging]
-level = "info"     # debug | info | warn
-format = "pretty"  # pretty | json
+# ─── GENERAL STRATEGY CONTROLS ─────────────────────────
+[strategy]
+observation_mode = false             # true = hanya log edge tanpa trading
+relaxed_mode_after_mins = 8          # thresholds dilonggarkan setelah 8 menit
+floor_mode_after_mins = 18           # floor thresholds aktif setelah 18 menit
+session_definition_mins = 30         # definisi panjang sesi opportunity
 
-# ─── STRATEGI DIVERGENCE (Trigger A) ───────────────────
+# ─── STRATEGI MOMENTUM DIVERGENCE ──────────────────────
 [strategy.divergence]
 enabled = true
-market_uncertainty_min = 0.38   # zona entry minimum YES price
-market_uncertainty_max = 0.63   # zona entry maximum YES price
-min_velocity_abs = 0.15         # BTC harus bergerak min $0.15/s dalam 10s
-min_edge_pct = 0.06             # minimum edge yang diperlukan (6%)
-min_confidence = 0.40           # minimum confidence (0.40 = 40%)
-profit_target_pct = 0.12        # take profit +12%
-stop_loss_pct = 0.07            # stop loss -7%
-exit_before_final_secs = 30     # keluar 30s sebelum market settlement
-min_time_remaining_secs = 60    # tidak entry jika sisa waktu < 60s
-max_time_remaining_secs = 270   # tidak entry jika sisa waktu > 270s
-
-# ─── STRATEGI EXHAUSTION (Trigger B) ───────────────────
-[strategy.exhaustion]
-enabled = true
-exhaustion_threshold = 0.80   # entry reversal jika harga >= 80%
-velocity_taper_ratio = 0.50   # short velocity < 50% dari medium velocity
-profit_target_pct = 0.08      # take profit +8% (lebih ketat)
-stop_loss_pct = 0.05          # stop loss -5% (lebih ketat)
-size_multiplier = 0.50        # gunakan 50% ukuran normal
-min_time_remaining_secs = 60
-max_time_remaining_secs = 200
+market_uncertainty_min = 0.32        # zona entry minimum YES price
+market_uncertainty_max = 0.68        # zona entry maximum YES price
+min_velocity_abs = 0.10              # BTC velocity min $/s dalam 10s
+min_velocity_consistency = 0.55      # konsistensi arah pergerakan velocity (min 55%)
+min_edge_pct = 0.035                 # minimum edge (3.5%)
+min_confidence = 0.42                # minimum confidence (42%)
+profit_target_pct = 0.10             # take profit +10%
+stop_loss_pct = 0.06                 # stop loss -6%
+exit_before_final_secs = 35          # exit N detik sebelum market settlement
+min_time_remaining_secs = 50         # tidak entry jika sisa waktu < 50s
+max_time_remaining_secs = 280        # tidak entry jika sisa waktu > 280s
+require_volume_alignment = true      # volume delta signum harus searah velocity
 
 # ─── RISK ENGINE ────────────────────────────────────────
 [risk]
-max_concurrent_positions = 1    # STRICT: maks 1 posisi aktif
-max_exposure_usd = 10.0         # total exposure maksimum $10
-consecutive_loss_limit = 4      # cooldown setelah 4 loss berturut-turut
-cooldown_after_loss_secs = 90   # cooldown 90 detik
-min_trade_interval_secs = 20    # jeda minimum antar trade
+max_concurrent_positions = 1         # STRICT: maks 1 posisi aktif
+max_exposure_usd = 10.0              # total exposure maksimum $10
+consecutive_loss_limit = 3           # cooldown setelah 3 loss berturut-turut
+cooldown_after_loss_secs = 120       # cooldown 120 detik
+min_trade_interval_secs = 15         # jeda minimum antar trade
 
 # ─── DATA QUALITY & HEARTBEAT ───────────────────────────
 [data_quality]
-max_price_jump_pct_per_5s = 0.15      # max 15% price change per 5 seconds
-max_price_age_ms = 2000               # reject signals if price older than 2s
+max_price_jump_pct_per_5s = 0.12      # max 12% price change per 5 seconds
+max_price_age_ms = 2000               # reject signals if price older than 2s (live WS)
+max_price_age_fallback_ms = 8000      # REST fallback at 2s interval
 ws_min_tick_rate = 0.2                # ticks/s below this triggers fallback
 ws_silence_reconnect_secs = 15        # force reconnect if no message for 15s
-ws_ping_interval_secs = 30            # send WS ping every 30s for latency
+ws_ping_interval_secs = 20            # send WS ping every 20s for latency
 
 # ─── PAPER MODE ─────────────────────────────────────────
 [paper]
@@ -566,14 +561,15 @@ polytrade/
 │   ├── config.rs               # Konfigurasi loader
 │   ├── error.rs                # Error types
 │   ├── market_data/            # Feed Binance & Polymarket WebSocket
-│   │   ├── price_validator.rs  # [NEW] Price Validator (Price Jump, Stale Snapshot, Seq Regression)
+│   │   ├── price_validator.rs  # Price Validator (Price Jump, Stale Snapshot, Seq Regression)
 │   ├── strategy/               # Implementasi strategi trading
-│   │   ├── divergence.rs       # Trigger A: Repricing Lag
-│   │   ├── exhaustion.rs       # Trigger B: Exhaustion Reversal
-│   │   ├── engine.rs           # Orchestrator strategi
+│   │   ├── divergence.rs       # MomentumDivergenceStrategy
+│   │   ├── engine.rs           # Orchestrator strategi & evaluation loop
+│   │   ├── filters.rs          # Gate filters (OFI, Consistency, Acceleration)
+│   │   ├── session.rs          # Session opportunity tracker
 │   │   └── traits.rs           # Strategy trait definitions
 │   ├── probability/            # Model estimasi probabilitas & edge
-│   │   ├── estimator.rs        # Kalkulasi internal probability
+│   │   ├── estimator.rs        # Kalkulasi internal probability & confidence
 │   │   └── edge.rs             # Edge scoring & tradeable check
 │   ├── paper/                  # Paper trading simulator
 │   │   └── simulator.rs        # Simulasi posisi, P&L, exit evaluation
@@ -621,18 +617,18 @@ polytrade/
 |---|---|---|---|
 | `minedge` | 8% | 1–50 | Minimum edge untuk entry |
 | `minconf` | 0.45 | 0.1–0.99 | Minimum confidence |
-| `stoploss` | 7% | 1–50 | Stop loss percentage |
-| `profit` | 12% | 1–100 | Profit target percentage |
-| `maxloss` | 4 | 1–20 | Consecutive loss sebelum cooldown |
-| `cooldown` | 90s | 10–3600 | Durasi cooldown dalam detik |
+| `stoploss` | 6% | 1–50 | Stop loss percentage |
+| `profit` | 10% | 1–100 | Profit target percentage |
+| `maxloss` | 3 | 1–20 | Consecutive loss sebelum cooldown |
+| `cooldown` | 120s | 10–3600 | Durasi cooldown dalam detik |
 
 ### Velocity Windows
 
 | Window | Durasi | Kegunaan |
 |---|---|---|
-| Short | 5 detik | Deteksi tapering (Trigger B) |
-| Medium | 15 detik | Baseline reference |
-| Long | 10 detik | Klasifikasi trend keseluruhan |
+| Short | 5 detik | Perhitungan momentum jangka sangat pendek |
+| Long | 10 detik | Klasifikasi trend keseluruhan & baseline velocity |
+| Medium | 15 detik | Pengukuran tren jangka menengah |
 
 ---
 

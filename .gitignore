@@ -1,0 +1,21 @@
+# Rust
+/target
+Cargo.lock
+
+# Node / JS
+/bot/node_modules
+/bot/dist
+
+# Environment configurations
+.env
+/bot/.env
+
+# Logs
+*.log
+
+# Databases / local state
+/data
+*.rdb
+
+# OS files
+.DS_Store

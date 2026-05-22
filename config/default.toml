@@ -1,0 +1,122 @@
+[feeds]
+binance_ws = "wss://stream.binance.com:443/ws/btcusdt@trade"
+polymarket_rest = "https://gamma-api.polymarket.com"
+polymarket_ws = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
+market_filter_min_secs = 300
+market_filter_max_secs = 604800
+market_keyword_filter = "BTC"
+
+[state]
+btc_tick_window_secs = 60
+btc_max_ticks = 500
+
+[redis]
+url = "redis://127.0.0.1:6379"
+publish_enabled = true
+
+[logging]
+level = "info"   # debug | info | warn
+format = "pretty" # pretty | json
+
+[probability]
+max_momentum_adjustment = 0.15
+momentum_weight = 0.6
+delta_weight = 0.4
+
+[edge]
+min_edge_pct = 0.08
+min_confidence = 0.45
+max_spread_for_trade = 0.06
+min_time_remaining_secs = 300
+max_time_remaining_secs = 604800
+edge_broadcast_interval_secs = 30
+
+[strategy]
+# Log all edges without trading — use for threshold calibration
+observation_mode = false
+relaxed_mode_after_mins = 10
+relaxed_min_edge_pct = 0.025
+relaxed_min_confidence = 0.20
+relaxed_min_velocity_abs = 0.05
+floor_mode_after_mins = 22
+floor_min_edge_pct = 0.015
+floor_min_confidence = 0.15
+floor_entry_if_any_signal = true
+session_definition_mins = 30
+
+[strategy.divergence]
+enabled = true
+market_uncertainty_min = 0.30
+market_uncertainty_max = 0.70
+min_velocity_abs = 0.08
+velocity_scale = 1.0
+delta_scale = 50000
+min_edge_pct = 0.04
+min_confidence = 0.30
+max_expected_repricing = 0.22
+profit_target_pct = 0.12
+stop_loss_pct = 0.07
+exit_before_final_secs = 30
+max_spread = 1.0
+require_volume_alignment = true
+min_time_remaining_secs = 60
+max_time_remaining_secs = 270
+
+[strategy.exhaustion]
+enabled = true
+min_edge_pct = 0.06
+exhaustion_threshold = 0.80
+velocity_taper_ratio = 0.50
+profit_target_pct = 0.08
+stop_loss_pct = 0.05
+size_multiplier = 0.50
+min_time_remaining_secs = 60
+max_time_remaining_secs = 200
+
+[risk]
+max_concurrent_positions = 1
+max_exposure_usd = 10.0
+consecutive_loss_limit = 4
+cooldown_after_loss_secs = 90
+min_trade_interval_secs = 20
+
+[paper]
+enabled = true
+default_size_usd = 1.0
+flag_suspicious_trades = true
+suspicious_pnl_threshold_pct = 50.0
+suspicious_hold_max_secs = 30
+
+[data_quality]
+max_price_jump_pct_per_5s = 0.15
+max_price_age_ms = 2000          # live WS feed (VPS production)
+max_price_age_fallback_ms = 8000 # REST fallback at 2s interval (local dev)
+ws_min_tick_rate = 0.2
+ws_silence_reconnect_secs = 15
+ws_ping_interval_secs = 30
+
+[btc5m]
+gamma_api = "https://gamma-api.polymarket.com"
+clob_api = "https://clob.polymarket.com"
+clock_sync_interval_secs = 60
+final_window_secs = 30          # stop trading when <= 30s remain
+pre_fetch_next_secs = 60        # pre-fetch next market when <= 60s remain
+price_stale_threshold_ms = 3000 # suppress trading if price older than this
+market_retry_attempts = 10
+market_retry_interval_secs = 5
+# Velocity windows
+velocity_window_10s = 10
+velocity_window_5s = 5
+velocity_window_15s = 15
+
+[telegram.notifications]
+position_opened = true
+position_closed = true
+kill_switch = true
+market_transition = false
+critical_feed_error = true
+edge_monitor = false
+signal_detected = false
+health_periodic = false
+
+

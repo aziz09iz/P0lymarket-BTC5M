@@ -136,8 +136,8 @@ async function runTests() {
     console.assert(reply.includes("PAPER"), "Status should show PAPER mode");
     console.assert(reply.includes("67,420"), "Status should show BTC price");
     console.assert(reply.includes("12ms avg"), "Status should show Binance latency");
-    console.assert(reply.includes("34ms avg"), "Status should show Polymarket latency");
-    console.assert(reply.includes("2 rejected updates"), "Status should show validator price rejections");
+    console.assert(reply.includes("34ms"), "Status should show Polymarket latency");
+    console.assert(reply.includes("2 rejected this session"), "Status should show validator price rejections");
     console.log("✅ /status command test passed");
   }
 

@@ -2,6 +2,14 @@
 // Pro UI formatting utilities for PolyTrade Telegram Bot
 // ---------------------------------------------------------------------------
 
+/** Escape raw strings for HTML display in Telegram */
+export function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 /** Format a UTC timestamp as "Xm Ys ago" */
 export function ago(tsMs: number): string {
   const diff = Date.now() - tsMs;
@@ -132,7 +140,7 @@ export function buildEdgeCard(
   const lines = [
     `📡 <b>EDGE MONITOR · BTC 5M</b> · ${modeStr}`,
     `──────────────────────`,
-    `<b>Market:</b> <i>${q}</i>`,
+    `<b>Market:</b> <i>${escapeHtml(q)}</i>`,
     `──────────────────────`,
     `<code>Polymarket YES : ${pct(data.poly_yes_pct).padEnd(8)}</code>`,
     `<code>Internal YES   : ${pct(data.internal_yes_pct).padEnd(8)}</code>`,

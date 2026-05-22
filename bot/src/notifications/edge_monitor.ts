@@ -1,7 +1,7 @@
 import type { Bot } from "grammy";
 import type { Redis } from "ioredis";
 import { getConfig } from "../redis/client.js";
-import { trendEmoji } from "../ui/format.js";
+import { trendEmoji, escapeHtml } from "../ui/format.js";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -121,7 +121,7 @@ export function startEdgeMonitor(
           } else if (data.tradeable) {
             statusLine = `🟢 TRADEABLE — signal detected!`;
           } else if (data.missing_reason && data.missing_reason !== "None") {
-            statusLine = `⏳ WAITING — ${data.missing_reason}`;
+            statusLine = `⏳ WAITING — ${escapeHtml(data.missing_reason)}`;
           }
 
           const trendIcon = trendEmoji(data.btc_trend);
@@ -149,7 +149,7 @@ export function startEdgeMonitor(
           const msgLines = [
             `🔍 Edge Monitor · ${modeStr} · ${modeEmoji} ${thresholdMode} MODE`,
             `━━━━━━━━━━━━━━━━━━━━━━━━`,
-            `Market:   <code>${data.market_id}</code>`,
+            `Market:   <code>${escapeHtml(data.market_id)}</code>`,
             `⏱  <code>${data.time_remaining_secs}s</code> remaining · ACTIVE`,
             ``,
             `YES:  <code>${yesPricePct.toFixed(1)}%</code>  NO:  <code>${noPricePct.toFixed(1)}%</code>`,
@@ -165,12 +165,12 @@ export function startEdgeMonitor(
             `Confidence:  <code>${data.confidence.toFixed(2)} (${confLabel})</code>`,
             `Status:  <b>${statusLine}</b>`,
             ``,
-            `Next trigger at: vel >= 0.15/s ${velOk ? "✅" : "❌"} · delta alignment ${deltaAligned ? "✅" : "❌"} · spread ${spreadOkCheck ? "✅" : "❌"}`,
-            `Mode: <code>${thresholdMode}</code> · thresholds: edge>=<code>${activeEdgePct.toFixed(0)}%</code> conf>=<code>${activeConf.toFixed(2)}</code>`,
+            `Next trigger at: vel &gt;= 0.15/s ${velOk ? "✅" : "❌"} · delta alignment ${deltaAligned ? "✅" : "❌"} · spread ${spreadOkCheck ? "✅" : "❌"}`,
+            `Mode: <code>${thresholdMode}</code> · thresholds: edge &gt;= <code>${activeEdgePct.toFixed(0)}%</code> conf &gt;= <code>${activeConf.toFixed(2)}</code>`,
           ];
 
           if (data.missing_reason && data.missing_reason !== "None" && !data.tradeable && !paused) {
-            msgLines.push(`Missing: ${data.missing_reason}`);
+            msgLines.push(`Missing: ${escapeHtml(data.missing_reason)}`);
           }
 
           message = msgLines.join("\n");

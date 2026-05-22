@@ -1,6 +1,6 @@
 import type { Context } from "grammy";
 import type { Redis } from "ioredis";
-import { trendEmoji, usd, SEP, header } from "../ui/format.js";
+import { trendEmoji, usd, SEP, header, escapeHtml } from "../ui/format.js";
 import { getConfig } from "../redis/client.js";
 
 export async function handleStatus(ctx: Context, redis: Redis): Promise<void> {
@@ -182,7 +182,7 @@ export async function handleStatus(ctx: Context, redis: Redis): Promise<void> {
       title,
       "",
       "━━━ MARKET ━━━━━━━━━━━━━━━━━",
-      `📍 <code>${marketId}</code>`,
+      `📍 <code>${escapeHtml(marketId)}</code>`,
       timeRemainingSecs > 0
         ? `⏱  <code>${timeRemainingSecs}s</code> remaining · ACTIVE`
         : `⏱  —`,
@@ -195,7 +195,7 @@ export async function handleStatus(ctx: Context, redis: Redis): Promise<void> {
           thresholdMode === "FLOOR" ? "🔴" : thresholdMode === "RELAXED" ? "🟡" : "🟢";
         return `Mode:          ${modeEmoji} <code>${thresholdMode}</code> (<code>${minsSinceLastTrade} min</code> since last trade)`;
       })(),
-      `Thresholds:    edge >= <code>${(activeMinEdgePct * 100).toFixed(0)}%</code> · conf >= <code>${activeMinConfidence.toFixed(2)}</code>`,
+      `Thresholds:    edge &gt;= <code>${(activeMinEdgePct * 100).toFixed(0)}%</code> · conf &gt;= <code>${activeMinConfidence.toFixed(2)}</code>`,
       `Divergence:    <code>${divergenceScore.toFixed(2)} (${divLabel})</code>`,
       `Est. repricing:<code>${expectedRepricing >= 0 ? "+" : ""}${(expectedRepricing * 100).toFixed(1)}%</code>`,
       `Direction:     <code>${bestDir === "YES" ? "⬆️ YES" : "⬇️ NO"} @ ${bestPrice.toFixed(3)}</code>`,
@@ -204,7 +204,7 @@ export async function handleStatus(ctx: Context, redis: Redis): Promise<void> {
     ];
 
     if (missingReason && missingReason !== "None" && !tradeable && !hasPosition && !paused) {
-      lines.push(`Missing:       <code>${missingReason}</code>`);
+      lines.push(`Missing:       <code>${escapeHtml(missingReason)}</code>`);
     }
 
     lines.push(
